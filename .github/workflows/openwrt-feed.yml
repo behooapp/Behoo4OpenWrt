@@ -45,11 +45,61 @@ jobs:
           test -s _site/feed/apk/x86_64/packages.adb
           test -s _site/feed/fw4/x86_64/Packages.sig
           test -s _site/feed/fw3/x86_64/Packages.sig
+      - name: Run the one-line installer on official OpenWrt 21.02 to 24.10 systems
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/behoo-openwrt-test/opkg"
+          mkdir -p "$work"
+          base=http://127.0.0.1:18736
+          python3 -m http.server 18736 --bind 127.0.0.1 --directory _site &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          curl -fsS --retry 5 --retry-connrefused "$base/install.sh" -o /dev/null
+          # Point only the Behoo URL at the signed feed about to be published.
+          sed "s|https://behooapp.github.io/Behoo4OpenWrt|$base|" _site/install.sh > "$work/install.sh"
+          while read -r version flavor digest; do
+            echo "::group::OpenWrt $version with $flavor"
+            (
+              root="$work/$version/root"
+              image="$work/$version/rootfs.img"
+              mkdir -p "$root"
+              url="https://downloads.openwrt.org/releases/$version/targets/x86/64/openwrt-$version-x86-64-generic-ext4-rootfs.img.gz"
+              curl -fLsS --retry 3 -o "$image.gz" "$url"
+              printf '%s  %s\n' "$digest" "$image.gz" | sha256sum -c -
+              gzip -d "$image.gz"
+              sudo mount -o loop "$image" "$root"
+              trap 'sudo umount "$root"' EXIT
+              sudo rm -f "$root/etc/resolv.conf"
+              sudo cp -L /etc/resolv.conf "$root/etc/resolv.conf"
+              for device in null urandom; do
+                if [ ! -e "$root/dev/$device" ]; then
+                  minor=3
+                  if [ "$device" = urandom ]; then minor=9; fi
+                  sudo mknod -m 666 "$root/dev/$device" c 1 "$minor"
+                fi
+              done
+              # Use the real opkg solver and unpacker with service hooks disabled.
+              opkg=$(sudo chroot "$root" /bin/sh -c 'command -v opkg')
+              sudo chroot "$root" /bin/mkdir -p /var/lock /var/opkg-lists /tmp/behoo-test
+              printf '#!/bin/sh\nexec %s --offline-root / "$@"\n' "$opkg" | sudo tee "$root/tmp/behoo-test/opkg" >/dev/null
+              sudo chmod +x "$root/tmp/behoo-test/opkg"
+              sudo cp "$work/install.sh" "$root/tmp/behoo-test/install.sh"
+              sudo timeout 120 chroot "$root" /bin/sh -c 'PATH=/tmp/behoo-test:$PATH sh /tmp/behoo-test/install.sh' < /dev/null
+              sudo chroot "$root" "$opkg" status luci-app-behoo | grep '^Status: .* installed$'
+              grep -Fx "src/gz behoo $base/feed/$flavor/x86_64" "$root/etc/opkg/behoo.conf"
+            )
+            echo '::endgroup::'
+          done <<'FIRMWARE'
+          21.02.7 fw3 dc2a80437fcc70517ec2e4db778d01a284dc2c53eb00b1139b24b7fbe9cd639b
+          22.03.7 fw4 536df49292c20f7a3edcf9a4da9db4025a69a3a25342ffefebb8176a85af12e6
+          23.05.6 fw4 34ed161650aca0219dee3a90283f6234e21cbdeb17a4cec66c48d6a0021e26fc
+          24.10.8 fw4 cf39cd1043fbff86ad2936c951fd6afe607437acf3531082cf11b20febc95b03
+          FIRMWARE
       - name: Test APK 25.12.6 and both opkg feeds
         run: |
           set -euo pipefail
           work="$RUNNER_TEMP/behoo-openwrt-test"
-          mkdir "$work"
+          mkdir -p "$work"
           sdk=openwrt-sdk-25.12.6-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
           curl -fLsS --retry 3 -o "$work/sdk.tar.zst" "https://downloads.openwrt.org/releases/25.12.6/targets/x86/64/$sdk"
           printf '%s  %s\n' 1864152619092e781fa36a401960c8e9ae42d6a364c44ee5f0b197ca5f3c0fcc "$work/sdk.tar.zst" | sha256sum -c -
@@ -110,56 +160,6 @@ jobs:
           sudo "$apk" --root "$root" --no-network --no-cache --no-scripts --keys-dir "$keys" --repository "$work/staged/packages.adb" add "$package"
           sudo "$apk" --root "$root" info --exists "$package"
           grep -Fx "$package" "$root/etc/apk/world"
-      - name: Run the one-line installer on official OpenWrt 21.02 to 24.10 systems
-        run: |
-          set -euo pipefail
-          work="$RUNNER_TEMP/behoo-openwrt-test/opkg"
-          mkdir -p "$work"
-          base=http://127.0.0.1:18736
-          python3 -m http.server 18736 --bind 127.0.0.1 --directory _site &
-          server_pid=$!
-          trap 'kill "$server_pid"' EXIT
-          curl -fsS --retry 5 --retry-connrefused "$base/install.sh" -o /dev/null
-          # Point only the Behoo URL at the signed feed about to be published.
-          sed "s|https://behooapp.github.io/Behoo4OpenWrt|$base|" _site/install.sh > "$work/install.sh"
-          while read -r version flavor digest; do
-            echo "::group::OpenWrt $version with $flavor"
-            (
-              root="$work/$version/root"
-              image="$work/$version/rootfs.img"
-              mkdir -p "$root"
-              url="https://downloads.openwrt.org/releases/$version/targets/x86/64/openwrt-$version-x86-64-generic-ext4-rootfs.img.gz"
-              curl -fLsS --retry 3 -o "$image.gz" "$url"
-              printf '%s  %s\n' "$digest" "$image.gz" | sha256sum -c -
-              gzip -d "$image.gz"
-              sudo mount -o loop "$image" "$root"
-              trap 'sudo umount "$root"' EXIT
-              sudo rm -f "$root/etc/resolv.conf"
-              sudo cp -L /etc/resolv.conf "$root/etc/resolv.conf"
-              for device in null urandom; do
-                if [ ! -e "$root/dev/$device" ]; then
-                  minor=3
-                  if [ "$device" = urandom ]; then minor=9; fi
-                  sudo mknod -m 666 "$root/dev/$device" c 1 "$minor"
-                fi
-              done
-              # Use the real opkg solver and unpacker with service hooks disabled.
-              opkg=$(sudo chroot "$root" /bin/sh -c 'command -v opkg')
-              sudo mkdir -p "$root/tmp/behoo-test"
-              printf '#!/bin/sh\nexec %s --offline-root / "$@"\n' "$opkg" | sudo tee "$root/tmp/behoo-test/opkg" >/dev/null
-              sudo chmod +x "$root/tmp/behoo-test/opkg"
-              sudo cp "$work/install.sh" "$root/tmp/behoo-test/install.sh"
-              sudo timeout 120 chroot "$root" /bin/sh -c 'PATH=/tmp/behoo-test:$PATH sh /tmp/behoo-test/install.sh'
-              sudo chroot "$root" "$opkg" status luci-app-behoo | grep '^Status: .* installed$'
-              grep -Fx "src/gz behoo $base/feed/$flavor/x86_64" "$root/etc/opkg/behoo.conf"
-            )
-            echo '::endgroup::'
-          done <<'FIRMWARE'
-          21.02.7 fw3 dc2a80437fcc70517ec2e4db778d01a284dc2c53eb00b1139b24b7fbe9cd639b
-          22.03.7 fw4 536df49292c20f7a3edcf9a4da9db4025a69a3a25342ffefebb8176a85af12e6
-          23.05.6 fw4 34ed161650aca0219dee3a90283f6234e21cbdeb17a4cec66c48d6a0021e26fc
-          24.10.8 fw4 cf39cd1043fbff86ad2936c951fd6afe607437acf3531082cf11b20febc95b03
-          FIRMWARE
       - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
