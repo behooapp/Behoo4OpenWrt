@@ -13,7 +13,7 @@
 
 以 root 登录路由器的 SSH 或网页终端，复制 [GitHub 一键安装页](https://behooapp.github.io/Behoo4OpenWrt/) 的命令。安装器按实际包管理器、防火墙和包架构选择软件源，校验公钥指纹、索引签名和安装包后再安装。
 
-OpenWrt 25.12 系列使用 APK。APK 软件源分别提供 `aarch64` 和 `aarch64_generic`，安装器使用 `apk --print-arch` 报告的架构。使用 `opkg` 的固件按实际防火墙选择 `fw3` 或 `fw4` 软件源。
+每个版本沿用同一条安装命令。安装器从 `/etc/apk/arch` 读取固件的软件包架构，配置缺失时才使用 `apk --print-arch`。采用 `opkg` 的固件按实际防火墙选择 `fw3` 或 `fw4`。设备需要所选软件源中已有对应架构的安装包。
 
 APK 软件源写在 `/etc/apk/repositories.d/behoo.list`，opkg 软件源写在 `/etc/opkg/behoo.conf`，两者均保留固件现有的软件源。后续在 LuCI「系统 → 软件包」刷新列表即可更新壁虎。移除上述对应的源文件即可取消订阅该源。
 
@@ -25,15 +25,15 @@ GitHub Actions 的 **Build OpenWrt packages** 会额外产出 `behoo-openwrt-web
 
 ## 选择安装包
 
-在路由器 SSH 终端查看固件版本和包架构。运行 `apk --print-arch` 或 `opkg print-architecture`，下载与输出完全匹配的 ZIP。在电脑上解压，按下表选择其中一个安装包。
+在路由器 SSH 终端查看固件版本和包架构。APK 固件用 `cat /etc/apk/arch` 查看第一种架构，缺少该文件时用 `apk --print-arch`。opkg 固件用 `opkg print-architecture` 查看优先级最高的设备架构。下载对应的 ZIP，在电脑上解压后按下表选择安装包。
 
 | 官方固件系列 | 对应文件 | 防火墙和界面 |
 | --- | --- | --- |
 | 25.12 | `apk/*.apk` | APK v3 内置 RSA 签名，fw4 / nftables，LuCI JS |
 | 24.10、23.05、22.03 | `fw4/*.ipk` | opkg，fw4 / nftables，LuCI JS |
-| 21.02、19.07、18.06 | `fw3/*.ipk` | opkg，fw3 / iptables，Lua LuCI 菜单 |
+| 21.02 | `fw3/*.ipk` | opkg，fw3 / iptables，Lua LuCI 菜单 |
 
-定制固件请以实际组件为准。`command -v fw4` 和 `command -v fw3` 可查看防火墙版本。两个 IPK 的包名相同，放在不同目录。
+19.07 和 18.06 可使用同一系列 fw3 包，兼容性取决于固件提供的依赖。定制固件请以实际组件为准。`command -v fw4` 和 `command -v fw3` 可查看防火墙版本。两个 IPK 的包名相同，放在不同目录。
 
 | 包架构 | ZIP 内的版本 |
 | --- | --- |
@@ -43,17 +43,19 @@ GitHub Actions 的 **Build OpenWrt packages** 会额外产出 `behoo-openwrt-web
 | `aarch64_cortex-a76` | APK、fw4 IPK |
 | `arm_cortex-a9_vfpv3` | fw3 IPK |
 
-插件自带 Mihomo。根据架构，文件展开后约 46–53 MiB，安装包约 17–19 MiB。运行 `df -h /overlay /tmp` 检查写入空间和上传临时空间，并为规则库、订阅和依赖预留余量。部分旧路由器需要 extroot 扩容才能安装。版本表表示适配目标，本版尚未在各代路由器上逐一安装验证。
+插件自带 Mihomo。根据架构，文件展开后约 46–53 MiB，安装包约 17–19 MiB。运行 `df -h /overlay /tmp` 检查写入空间和上传临时空间，并为规则库、订阅和依赖预留余量。部分旧路由器需要 extroot 扩容才能安装。版本表表示适配目标。测试使用官方固件镜像，具体路由器型号仍受可用架构、软件依赖和存储空间限制。
 
 ### OpenWrt 25.12
 
 将 ZIP 里的 `keys/behoo-openwrt.pem` 和对应的 APK 复制到路由器 `/tmp/`。首次安装先核对发布公钥文件的 SHA-256，再加入 apk 的信任目录。
 
 ```sh
+arch=$(awk 'NF { print $1; exit }' /etc/apk/arch 2>/dev/null) || arch=
+[ -n "$arch" ] || arch=$(apk --print-arch)
 echo 'f5827b2f7dd1311c2f1c2cc2a7f4513070b7bae743bce142705a7bd8606df0e8  /tmp/behoo-openwrt.pem' | sha256sum -c - &&
   mkdir -p /etc/apk/keys &&
   cp /tmp/behoo-openwrt.pem /etc/apk/keys/behoo-openwrt.pem &&
-  apk add "/tmp/luci-app-behoo-0.1.3-r1_$(apk --print-arch).apk"
+  apk add "/tmp/luci-app-behoo-0.1.3-r1_$arch.apk"
 ```
 
 也可以先完成公钥校验与复制，再到 LuCI「系统 → 软件包 → 上传软件包」上传解压得到的 `.apk`。遇到 `/tmp/upload.apk: v2 package format error` 时，重新选择 `apk/` 目录下的文件；IPK 和 ZIP 都不能作为 APK 上传。
