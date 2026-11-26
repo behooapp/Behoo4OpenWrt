@@ -118,7 +118,10 @@ if [ "$manager" = apk ]; then
     # record a checksum constraint in world, preventing later normal upgrades.
     apk --no-cache --keys-dir "$work/install-keys" --repository "$work/packages.adb" add "$package"
 else
-    opkg update
+    # Refresh dependency indexes only when the install needs them.
+    if ! opkg --noaction install "$payload" >/dev/null 2>&1; then
+        opkg update || printf '%s\n' '部分软件源刷新失败，将使用可用的索引尝试安装。' >&2
+    fi
     opkg install "$payload"
 fi
 mv -f "$key_stage" "$key_dest"
