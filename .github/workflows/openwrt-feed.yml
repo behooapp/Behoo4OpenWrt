@@ -1,0 +1,51 @@
+name: Publish OpenWrt feed
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/openwrt-feed.yml]
+  workflow_dispatch:
+
+concurrency:
+  group: openwrt-feed
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download and verify the signed feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FEED_TAG: '0.1.3'
+          SHA256: cfd66ae4a3d7b103f3efe257e258d0abf72300d46b2b41dffe33e06c7f7cd06b
+        run: |
+          set -euo pipefail
+          archive="behoo-openwrt-feed-$FEED_TAG.tar.gz"
+          gh release download "$FEED_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$archive"
+          printf '%s  %s\n' "$SHA256" "$archive" | sha256sum -c -
+          mkdir _site
+          tar -xzf "$archive" -C _site
+          sh -n _site/install.sh
+          test -s _site/feed/apk/x86_64/packages.adb
+          test -s _site/feed/fw4/x86_64/Packages.sig
+          test -s _site/feed/fw3/x86_64/Packages.sig
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy OpenWrt feed
+        id: deployment
+        uses: actions/deploy-pages@v4
