@@ -7,7 +7,7 @@
 - 官网：[https://behoo.us/openwrt](https://behoo.us/openwrt)
 - 邮箱：`behooapp [at] gmail`
 
-当前版本为 **luci-app-behoo 0.1.3**，入口在「服务 → 壁虎 Behoo」。管理服务由 procd 启动，代理使用包内的 Mihomo v1.19.33。初次安装时代理关闭，所有设备默认直连。
+当前版本为 **luci-app-behoo 0.1.4**，入口在「服务 → 壁虎 Behoo」。管理服务由 procd 启动，代理使用包内的 Mihomo v1.19.33。初次安装时代理关闭，所有设备默认直连。
 
 ## 官网一键安装与更新
 
@@ -40,6 +40,7 @@ GitHub Actions 的 **Build OpenWrt packages** 会额外产出 `behoo-openwrt-web
 | `x86_64`、`aarch64_generic`、`aarch64_cortex-a53`、`aarch64_cortex-a72` | APK、fw4 IPK、fw3 IPK |
 | `arm_cortex-a7_neon-vfpv4`、`arm_cortex-a9_vfpv3-d16`、`arm_cortex-a15_neon-vfpv4` | APK、fw4 IPK、fw3 IPK |
 | `mips_24kc`（大端）、`mipsel_24kc`（小端） | APK、fw4 IPK、fw3 IPK |
+| `aarch64` | APK |
 | `aarch64_cortex-a76` | APK、fw4 IPK |
 | `arm_cortex-a9_vfpv3` | fw3 IPK |
 
@@ -55,7 +56,7 @@ arch=$(awk 'NF { print $1; exit }' /etc/apk/arch 2>/dev/null) || arch=
 echo 'f5827b2f7dd1311c2f1c2cc2a7f4513070b7bae743bce142705a7bd8606df0e8  /tmp/behoo-openwrt.pem' | sha256sum -c - &&
   mkdir -p /etc/apk/keys &&
   cp /tmp/behoo-openwrt.pem /etc/apk/keys/behoo-openwrt.pem &&
-  apk add "/tmp/luci-app-behoo-0.1.3-r1_$arch.apk"
+  apk add "/tmp/luci-app-behoo-0.1.4-r1_$arch.apk"
 ```
 
 也可以先完成公钥校验与复制，再到 LuCI「系统 → 软件包 → 上传软件包」上传解压得到的 `.apk`。遇到 `/tmp/upload.apk: v2 package format error` 时，重新选择 `apk/` 目录下的文件；IPK 和 ZIP 都不能作为 APK 上传。
@@ -65,7 +66,7 @@ echo 'f5827b2f7dd1311c2f1c2cc2a7f4513070b7bae743bce142705a7bd8606df0e8  /tmp/beh
 将所选目录里的一对 `.ipk` 和 `.ipk.sig`，以及 `keys/behoo-opkg.pub` 复制到路由器 `/tmp/`。下面的命令以 x86_64 为例，按实际文件名修改第一行。通过 SSH 安装可以对本地 IPK 单独验签。
 
 ```sh
-pkg=/tmp/luci-app-behoo_0.1.3-1_x86_64.ipk
+pkg=/tmp/luci-app-behoo_0.1.4-1_x86_64.ipk
 echo 'ac2409d878e7392b463aaa605db4970ff9300fa3081da7330acc138f3da0305e  /tmp/behoo-opkg.pub' | sha256sum -c - &&
   usign -V -p /tmp/behoo-opkg.pub -m "$pkg" -x "$pkg.sig" &&
   opkg install "$pkg"
@@ -73,7 +74,7 @@ echo 'ac2409d878e7392b463aaa605db4970ff9300fa3081da7330acc138f3da0305e  /tmp/beh
 
 如果提示缺少依赖，确认当前固件的软件源可用，运行 `opkg update` 后再次执行验签和安装。维护软件源时，分别发布 fw3 和 fw4 目录中的 IPK、`Packages.gz` 和 `Packages.sig`。在路由器上核对公钥指纹后执行 `opkg-key add /tmp/behoo-opkg.pub`，即可使用 opkg 对软件源索引验签。
 
-安装后重新登录 LuCI，打开「服务 → 壁虎 Behoo」。在「关于」中可查看已安装版本、编译日期、项目链接及致谢，点击「检查更新」可查询 BehooWRT 的最新正式 GitHub Release 标签。可用 `ubus list -v behoo` 查看管理接口，或用 `logread -e behoo` 检查服务。卸载命令分别为 `apk del luci-app-behoo` 和 `opkg remove luci-app-behoo`。普通升级、重启及卸载保留 `/etc/behoo` 中的设置和订阅。
+安装后重新登录 LuCI，打开「服务 → 壁虎 Behoo」。在「关于」中可查看已安装版本、编译日期、OpenWrt 项目链接和官网，点击「检查更新」可查询本仓库的最新正式 GitHub Release 标签。可用 `ubus list -v behoo` 查看管理接口，或用 `logread -e behoo` 检查服务。卸载命令分别为 `apk del luci-app-behoo` 和 `opkg remove luci-app-behoo`。普通升级、重启及卸载保留 `/etc/behoo` 中的设置和订阅。
 
 ## 首次使用
 
@@ -89,7 +90,7 @@ echo 'ac2409d878e7392b463aaa605db4970ff9300fa3081da7330acc138f3da0305e  /tmp/beh
 在仓库根目录运行。需要 Python 3.9+、Go 1.26.x、OpenSSL 和 OpenWrt 的 usign。可用 `BEHOO_GO` 指定 Go 工具链。两个环境变量 `BEHOO_APK_KEY` 和 `BEHOO_OPKG_KEY` 分别指向与仓库公钥匹配的发布私钥文件。
 
 ```sh
-out=dist/openwrt/0.1.3
+out=dist/openwrt/0.1.4
 python3 openwrt/build-ipk.py
 python3 openwrt/build-ipk.py --legacy
 python3 openwrt/sign-ipks.py --sign-key "$BEHOO_OPKG_KEY" "$out/fw3" "$out/fw4"
@@ -98,6 +99,6 @@ python3 openwrt/bundle.py "$out"
 python3 openwrt/build-site.py "$out" --indices "$out/indices" --opkg-key "$BEHOO_OPKG_KEY" --output "$out/web/openwrt"
 ```
 
-`build-ipk.py` 接受一个或多个包架构名，例如 `python3 openwrt/build-ipk.py --legacy mipsel_24kc`。管理服务和 Mihomo 按 CPU 静态编译，MIPS 使用软件浮点。ZIP 在 `dist/openwrt/0.1.3/downloads/`。
+`build-ipk.py` 接受一个或多个包架构名，例如 `python3 openwrt/build-ipk.py --legacy mipsel_24kc`。管理服务和 Mihomo 按 CPU 静态编译，MIPS 使用软件浮点。ZIP 在 `dist/openwrt/0.1.4/downloads/`。
 
 GitHub Actions 的 **Build OpenWrt packages** 需要配置 `BEHOO_APK_SIGNING_KEY` 和 `BEHOO_OPKG_SIGNING_KEY` 两个 Secrets（私钥文件全文）。工作流使用带 SHA-256 校验的 25.12.6 SDK，对发布的 APK 逐个运行原生 `apk verify` 和解包检查，并使用 SDK 的 `usign` 签发并验证 IPK 及软件源索引。私钥只用于签名步骤。固件版本、包管理和防火墙切换见 [OpenWrt APK 文档](https://openwrt.org/docs/guide-user/additional-software/apk) 与 [OpenWrt 22.03 版本说明](https://openwrt.org/releases/22.03/start)。
