@@ -3,7 +3,7 @@ name: Publish OpenWrt feed
 on:
   push:
     branches: [main]
-    paths: [.github/workflows/openwrt-feed.yml]
+    paths: [.github/workflows/openwrt-feed.yml, install.sh]
   workflow_dispatch:
 
 concurrency:
@@ -15,8 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      installer_sha: ${{ steps.installer.outputs.sha }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Download and verify the signed feed
+        id: installer
         env:
           GH_TOKEN: ${{ github.token }}
           FEED_TAG: '0.1.3'
@@ -33,14 +39,17 @@ jobs:
           mkdir _site
           tar -xzf "$archive" -C _site
           tar -xzf "$addon" -C _site
+          cp install.sh _site/install.sh
           sh -n _site/install.sh
+          printf 'sha=%s\n' "$(sha256sum _site/install.sh | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
           test -s _site/feed/apk/x86_64/packages.adb
           test -s _site/feed/fw4/x86_64/Packages.sig
           test -s _site/feed/fw3/x86_64/Packages.sig
       - name: Test APK 25.12.6 and both opkg feeds
         run: |
           set -euo pipefail
-          work=$(mktemp -d)
+          work="$RUNNER_TEMP/behoo-openwrt-test"
+          mkdir "$work"
           sdk=openwrt-sdk-25.12.6-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
           curl -fLsS --retry 3 -o "$work/sdk.tar.zst" "https://downloads.openwrt.org/releases/25.12.6/targets/x86/64/$sdk"
           printf '%s  %s\n' 1864152619092e781fa36a401960c8e9ae42d6a364c44ee5f0b197ca5f3c0fcc "$work/sdk.tar.zst" | sha256sum -c -
@@ -65,6 +74,42 @@ jobs:
           printf '%s\n' "$url" > "$work/root/etc/apk/repositories"
           "$apk" --root "$work/root" --arch aarch64 --no-cache fetch --output "$work/fetched" luci-app-behoo
           cmp "$repo/luci-app-behoo-0.1.3-r1.apk" "$work/fetched/"*.apk
+      - name: Test apk add with the package database from official ARM64 firmware
+        run: |
+          set -euo pipefail
+          # Reuse the same SDK tools as the feed check on this runner.
+          work="$RUNNER_TEMP/behoo-openwrt-test"
+          apk="$work/sdk/staging_dir/host/bin/apk"
+          firmware=openwrt-25.12.6-bcm27xx-bcm2711-rpi-4-ext4-factory.img.gz
+          curl -fLsS --retry 3 -o "$work/$firmware" "https://downloads.openwrt.org/releases/25.12.6/targets/bcm27xx/bcm2711/$firmware"
+          printf '%s  %s\n' 90f6cf7a2fd7e3bf2eab060c7460612be7b43c0c3e075fad01ac80a70a41a917 "$work/$firmware" | sha256sum -c -
+          # This image's root filesystem starts at 72 MiB.
+          gzip -dc "$work/$firmware" > "$work/firmware.img"
+          dd if="$work/firmware.img" of="$work/root.ext4" bs=1M skip=72 status=none
+          root="$work/firmware-root"
+          mkdir -p "$root/etc/apk" "$root/lib/apk/db"
+          for path in /etc/apk/arch /etc/apk/world /lib/apk/db/installed; do
+            debugfs -R "dump $path $root$path" "$work/root.ext4"
+            test -s "$root$path"
+          done
+          keys="$PWD/_site/keys"
+          package=luci-app-behoo
+          wrong_repo="$PWD/_site/feed/apk/aarch64/packages.adb"
+          if sudo "$apk" --root "$root" --no-network --no-cache --keys-dir "$keys" --repository "$wrong_repo" add --simulate "$package" > "$work/rejected.log" 2>&1; then
+            cat "$work/rejected.log"
+            exit 1
+          fi
+          cat "$work/rejected.log"
+          grep -F 'error: uninstallable' "$work/rejected.log"
+          arch=$(awk 'NF { print $1; exit }' "$root/etc/apk/arch")
+          test "$arch" = aarch64_cortex-a72
+          mkdir "$work/staged"
+          cp _site/feed/apk/"$arch"/packages.adb _site/feed/apk/"$arch"/luci-app-behoo-*.apk "$work/staged/"
+          "$apk" --keys-dir "$keys" verify "$work/staged/packages.adb" "$work/staged/"*.apk
+          # Install in the disposable database without running router service hooks.
+          sudo "$apk" --root "$root" --no-network --no-cache --no-scripts --keys-dir "$keys" --repository "$work/staged/packages.adb" add "$package"
+          sudo "$apk" --root "$root" info --exists "$package"
+          grep -Fx "$package" "$root/etc/apk/world"
       - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
@@ -82,10 +127,14 @@ jobs:
       - name: Deploy OpenWrt feed
         id: deployment
         uses: actions/deploy-pages@v4
-      - name: Verify the public aarch64 index
+      - name: Verify the public installer and aarch64 index
         env:
           PAGES_URL: ${{ steps.deployment.outputs.page_url }}
+          INSTALLER_SHA: ${{ needs.package.outputs.installer_sha }}
         run: |
+          installer="${PAGES_URL%/}/install.sh?rev=$GITHUB_SHA"
+          curl -fsSL --retry 8 --retry-delay 3 --retry-all-errors "$installer" -o install.sh
+          printf '%s  %s\n' "$INSTALLER_SHA" install.sh | sha256sum -c -
           url="${PAGES_URL%/}/feed/apk/aarch64/packages.adb?rev=$GITHUB_SHA"
           curl -fsSL --retry 8 --retry-delay 3 --retry-all-errors "$url" -o packages.adb
           printf '%s  %s\n' d3dcc264c7ea12fe6c18a7d7b600fa7ee1d9783b3e46da3f155c8405b5444e20 packages.adb | sha256sum -c -
