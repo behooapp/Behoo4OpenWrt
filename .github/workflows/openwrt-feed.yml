@@ -150,35 +150,7 @@ jobs:
               sudo chmod +x "$root/tmp/behoo-test/opkg"
               sudo cp "$work/install.sh" "$root/tmp/behoo-test/install.sh"
               sudo timeout 120 chroot "$root" /bin/sh -c 'PATH=/tmp/behoo-test:$PATH sh /tmp/behoo-test/install.sh'
-              sudo chroot "$root" "$opkg" status luci-app-behoo | grep '^Status: .* installed
-        with:
-          path: _site
-
-  deploy:
-    needs: package
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy OpenWrt feed
-        id: deployment
-        uses: actions/deploy-pages@v4
-      - name: Verify the public installer and aarch64 index
-        env:
-          PAGES_URL: ${{ steps.deployment.outputs.page_url }}
-          INSTALLER_SHA: ${{ needs.package.outputs.installer_sha }}
-        run: |
-          installer="${PAGES_URL%/}/install.sh?rev=$GITHUB_SHA"
-          curl -fsSL --retry 8 --retry-delay 3 --retry-all-errors "$installer" -o install.sh
-          printf '%s  %s\n' "$INSTALLER_SHA" install.sh | sha256sum -c -
-          url="${PAGES_URL%/}/feed/apk/aarch64/packages.adb?rev=$GITHUB_SHA"
-          curl -fsSL --retry 8 --retry-delay 3 --retry-all-errors "$url" -o packages.adb
-          printf '%s  %s\n' d3dcc264c7ea12fe6c18a7d7b600fa7ee1d9783b3e46da3f155c8405b5444e20 packages.adb | sha256sum -c -
-
+              sudo chroot "$root" "$opkg" status luci-app-behoo | grep '^Status: .* installed$'
               grep -Fx "src/gz behoo $base/feed/$flavor/x86_64" "$root/etc/opkg/behoo.conf"
             )
             echo '::endgroup::'
