@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>安装到 OpenWrt · 壁虎 Behoo</title>
+<style>
+:root{color-scheme:light dark;font:17px/1.65 "DM Sans",system-ui,sans-serif;background:#f4f7f1;color:#19281e}
+*{box-sizing:border-box}body{max-width:700px;padding:clamp(24px,6vw,64px) 24px;margin:auto}header{display:flex;align-items:center;gap:12px;font-weight:650}img{width:42px;height:42px;object-fit:contain}h1{font-size:clamp(32px,7vw,48px);line-height:1.2;margin:46px 0 16px}p{margin:12px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:15px/1.6 ui-monospace,monospace;padding:18px;background:#162a20;color:#ecf8e6;border-radius:10px}button{cursor:pointer;background:#205e38;color:white;border:0;border-radius:8px;font:inherit;padding:8px 18px}button:focus-visible,a:focus-visible{outline:3px solid #5583c4;outline-offset:3px}button[hidden]{display:none}small{display:block;margin-top:28px}a{color:inherit}#status{margin-left:10px}@media(prefers-color-scheme:dark){:root{background:#142019;color:#eff6ef}pre{background:#22352a}button{background:#356d48}}
+</style>
+<header><img src="icon.png" alt=""><span>壁虎 Behoo</span></header>
+<main><h1>安装到 OpenWrt</h1>
+<p>以管理员身份登录路由器的 SSH 或网页终端，粘贴下面的命令并运行。安装程序会识别设备架构，验证发布签名，并添加壁虎软件源。</p>
+<pre><code id="cmd">( f=$(mktemp) || exit 1; trap &#x27;rm -f &quot;$f&quot;&#x27; EXIT; wget -O &quot;$f&quot; https://behooapp.github.io/Behoo4OpenWrt/install.sh &amp;&amp; sh &quot;$f&quot; )</code></pre>
+<button id="copy" type="button" hidden>复制安装命令</button><span id="status" role="status"></span>
+<p>安装完成后，在路由器管理页打开 <strong>服务 → 壁虎 Behoo</strong>。以后可在「系统 → 软件包」刷新列表并更新。</p>
+<small><a href="install.sh">查看安装脚本</a> · <a href="https://github.com/behooapp/Behoo4OpenWrt/releases">离线安装包</a></small></main>
+<script>
+const button = document.getElementById('copy');
+if (navigator.clipboard) {
+  button.hidden = false;
+  button.onclick = async () => {
+    const status = document.getElementById('status');
+    try { await navigator.clipboard.writeText(document.getElementById('cmd').textContent); status.textContent = '已复制'; }
+    catch { status.textContent = '请选中上方命令复制'; }
+  };
+}
+</script></html>
