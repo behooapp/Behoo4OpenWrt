@@ -2,7 +2,7 @@
 # Install Behoo on OpenWrt and register its signed feed for subsequent upgrades.
 set -eu
 umask 077
-base='https://behoo.us/openwrt'
+base='https://behooapp.github.io/Behoo4OpenWrt'
 package=luci-app-behoo
 fail() { printf '%s\n' "$*" >&2; exit 1; }
 get() { wget -O "$2" "$1" || fail "下载失败：$1。请检查网络及该架构的软件源。"; }
