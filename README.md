@@ -11,7 +11,9 @@
 
 ## 官网一键安装与更新
 
-部署后使用 [壁虎 OpenWrt 安装页](https://behoo.us/openwrt/)。用户以 root 登录路由器终端，复制页面中的一行命令。安装程序根据包管理器、CPU 架构和实际防火墙选择软件源，校验固定公钥指纹、仓库签名和安装包，再安装插件。使用 SSH 或固件已有的网页终端均可。
+以 root 登录路由器的 SSH 或网页终端，复制 [GitHub 一键安装页](https://behooapp.github.io/Behoo4OpenWrt/) 的命令。安装器按实际包管理器、防火墙和包架构选择软件源，校验公钥指纹、索引签名和安装包后再安装。
+
+OpenWrt 25.12 系列使用 APK。APK 软件源分别提供 `aarch64` 和 `aarch64_generic`，安装器使用 `apk --print-arch` 报告的架构。使用 `opkg` 的固件按实际防火墙选择 `fw3` 或 `fw4` 软件源。
 
 APK 软件源写在 `/etc/apk/repositories.d/behoo.list`，opkg 软件源写在 `/etc/opkg/behoo.conf`，两者均保留固件现有的软件源。后续在 LuCI「系统 → 软件包」刷新列表即可更新壁虎。移除上述对应的源文件即可取消订阅该源。
 
