@@ -16,7 +16,12 @@ if [ -s /lib/apk/db/installed ] && command -v apk >/dev/null; then
     manager=apk
     command -v fw4 >/dev/null || fail '当前 APK 版本需要 firewall4。'
     flavor=apk
-    arch=$(apk --print-arch)
+    # Prefer the firmware's APK package architecture to the compiled CPU name.
+    arch=
+    if [ -r /etc/apk/arch ]; then
+        arch=$(awk 'NF { print $1; exit }' /etc/apk/arch)
+    fi
+    if [ -z "$arch" ]; then arch=$(apk --print-arch); fi
     key=behoo-openwrt.pem
     fingerprint='f5827b2f7dd1311c2f1c2cc2a7f4513070b7bae743bce142705a7bd8606df0e8'
     key_dest=/etc/apk/keys/$key
