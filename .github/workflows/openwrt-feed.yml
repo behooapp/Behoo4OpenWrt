@@ -151,10 +151,24 @@ jobs:
           mkdir "$work/staged"
           cp _site/feed/apk/"$arch"/packages.adb _site/feed/apk/"$arch"/luci-app-behoo-*.apk "$work/staged/"
           "$apk" --keys-dir "$keys" verify "$work/staged/packages.adb" "$work/staged/"*.apk
+          cp -a "$root" "$work/upgrade-root"
           # Install in the disposable database without running router service hooks.
           sudo "$apk" --root "$root" --no-network --no-cache --no-scripts --keys-dir "$keys" --repository "$work/staged/packages.adb" add "$package"
           sudo "$apk" --root "$root" info --exists "$package"
           grep -Fx "$package" "$root/etc/apk/world"
+          # Exercise the upgrade against the same ARM64 firmware database as a router.
+          previous=behoo-openwrt-0.1.3-aarch64_cortex-a72.zip
+          curl -fLsS --retry 3 "https://github.com/$GITHUB_REPOSITORY/releases/download/0.1.3/$previous" -o "$work/$previous"
+          printf '%s  %s\n' 42f1ea96830ef21dc2970ea64a367b8f6c0344b1aa47ad310efc3722ac34c049 "$work/$previous" | sha256sum -c -
+          unzip -p "$work/$previous" "apk/luci-app-behoo-0.1.3-r1_${arch}.apk" > "$work/luci-app-behoo-0.1.3-r1.apk"
+          upgrade_apk() { sudo "$apk" --root "$work/upgrade-root" --no-cache --no-network --no-scripts --keys-dir "$keys" "$@"; }
+          upgrade_apk add "$work/luci-app-behoo-0.1.3-r1.apk"
+          upgrade_apk list -I --manifest "$package" | grep -Fx "$package 0.1.3-r1"
+          target=0.1.4-r1
+          upgrade_apk --repository "$work/staged/packages.adb" add "$package>=$target"
+          upgrade_apk list -I --manifest "$package" | grep -Fx "$package $target"
+          cmp "$root/usr/lib/behoo/behoo" "$work/upgrade-root/usr/lib/behoo/behoo"
+          cmp "$root/www/luci-static/resources/view/behoo/dashboard.js" "$work/upgrade-root/www/luci-static/resources/view/behoo/dashboard.js"
       - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
