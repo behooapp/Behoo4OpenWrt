@@ -3,7 +3,7 @@ name: Publish OpenWrt feed
 on:
   push:
     branches: [main]
-    paths: [.github/workflows/openwrt-feed.yml, install.sh]
+    paths: [.github/workflows/openwrt-feed.yml, install.sh, index.html, icon.png]
   workflow_dispatch:
 
 concurrency:
@@ -25,21 +25,16 @@ jobs:
         id: installer
         env:
           GH_TOKEN: ${{ github.token }}
-          FEED_TAG: '0.1.3'
-          SHA256: cfd66ae4a3d7b103f3efe257e258d0abf72300d46b2b41dffe33e06c7f7cd06b
-          AARCH64_SHA256: 2ec658058ccc82486c991e732957388d6c55840ed24a0e7eb9e58e401c91e031
+          FEED_TAG: '0.1.4'
+          SHA256: f04650150213e5d599ccdfc0d3e24b5d90cb5e054e5c01f4a37150e86f8ed448
         run: |
           set -euo pipefail
-          archive="behoo-openwrt-feed-$FEED_TAG.tar.gz"
+          archive="behoo-openwrt-feed-data-$FEED_TAG.tar.gz"
           gh release download "$FEED_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$archive"
           printf '%s  %s\n' "$SHA256" "$archive" | sha256sum -c -
-          addon="behoo-openwrt-apk-aarch64-$FEED_TAG.tar.gz"
-          gh release download "$FEED_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$addon"
-          printf '%s  %s\n' "$AARCH64_SHA256" "$addon" | sha256sum -c -
           mkdir _site
           tar -xzf "$archive" -C _site
-          tar -xzf "$addon" -C _site
-          cp install.sh _site/install.sh
+          cp install.sh index.html icon.png _site/
           sh -n _site/install.sh
           printf 'sha=%s\n' "$(sha256sum _site/install.sh | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
           test -s _site/feed/apk/x86_64/packages.adb
@@ -112,7 +107,7 @@ jobs:
             "$usign" -V -p _site/keys/behoo-opkg.pub -m "$work/Packages" -x "${index%.gz}.sig"
           done
           repo=_site/feed/apk/aarch64
-          "$apk" --keys-dir "$PWD/_site/keys" verify "$repo/packages.adb" "$repo/luci-app-behoo-0.1.3-r1.apk"
+          "$apk" --keys-dir "$PWD/_site/keys" verify "$repo/packages.adb" "$repo/luci-app-behoo-0.1.4-r1.apk"
           mkdir -p "$work/root/etc/apk/keys" "$work/fetched"
           sudo "$apk" --root "$work/root" --arch aarch64 --no-network add --initdb
           cp _site/keys/behoo-openwrt.pem "$work/root/etc/apk/keys/"
@@ -123,7 +118,7 @@ jobs:
           curl -fsS --retry 5 --retry-connrefused "$url" -o /dev/null
           printf '%s\n' "$url" > "$work/root/etc/apk/repositories"
           "$apk" --root "$work/root" --arch aarch64 --no-cache fetch --output "$work/fetched" luci-app-behoo
-          cmp "$repo/luci-app-behoo-0.1.3-r1.apk" "$work/fetched/"*.apk
+          cmp "$repo/luci-app-behoo-0.1.4-r1.apk" "$work/fetched/"*.apk
       - name: Test apk add with the package database from official ARM64 firmware
         run: |
           set -euo pipefail
@@ -177,7 +172,7 @@ jobs:
       - name: Deploy OpenWrt feed
         id: deployment
         uses: actions/deploy-pages@v4
-      - name: Verify the public installer and aarch64 index
+      - name: Verify the public installer and APK, fw3 and fw4 indexes
         env:
           PAGES_URL: ${{ steps.deployment.outputs.page_url }}
           INSTALLER_SHA: ${{ needs.package.outputs.installer_sha }}
@@ -187,4 +182,8 @@ jobs:
           printf '%s  %s\n' "$INSTALLER_SHA" install.sh | sha256sum -c -
           url="${PAGES_URL%/}/feed/apk/aarch64/packages.adb?rev=$GITHUB_SHA"
           curl -fsSL --retry 8 --retry-delay 3 --retry-all-errors "$url" -o packages.adb
-          printf '%s  %s\n' d3dcc264c7ea12fe6c18a7d7b600fa7ee1d9783b3e46da3f155c8405b5444e20 packages.adb | sha256sum -c -
+          printf '%s  %s\n' 2a8a30ace11cf1e4f8b17375a1414f3d075873e1c48a42ee1a45b912bb063b97 packages.adb | sha256sum -c -
+          for flavor in fw3 fw4; do
+            curl -fsSL --retry 8 --retry-delay 3 --retry-all-errors "${PAGES_URL%/}/feed/$flavor/x86_64/Packages.gz?rev=$GITHUB_SHA" -o "$flavor.gz"
+            gzip -dc "$flavor.gz" | grep -Fx 'Version: 0.1.4-1'
+          done
