@@ -68,6 +68,9 @@ if [ "$manager" = apk ]; then
     [ "$#" = 1 ] && [ -f "$1" ] || fail '未找到唯一匹配的 APK。'
     payload=$1
     apk --keys-dir "$work/keys" verify "$payload" || fail 'APK 软件包验签失败。'
+    filename=${payload##*/}
+    target=${filename#"$package"-}
+    target=${target%.apk}
     source_line="$index"
 else
     command -v usign >/dev/null || fail '此固件需要 OpenWrt 的 usign 工具。'
@@ -116,7 +119,15 @@ if [ "$manager" = apk ]; then
     cp "$work/keys/$key" "$work/install-keys/"
     # Install by name from our staged signed repository. Local-file installs may
     # record a checksum constraint in world, preventing later normal upgrades.
-    apk --no-cache --keys-dir "$work/install-keys" --repository "$work/packages.adb" add "$package"
+    # Require the signed feed version while allowing subsequent package upgrades.
+    apk --no-cache --keys-dir "$work/install-keys" --repository "$work/packages.adb" add "$package>=$target"
+    installed=$(apk --no-network list --installed --manifest "$package" | awk -v pkg="$package" '$1 == pkg { print $2; exit }')
+    [ -n "$installed" ] || fail '无法读取壁虎的已安装版本。'
+    case "$(apk version -t "$installed" "$target")" in
+        '='|'>') ;;
+        *) fail "壁虎升级未完成：目标 $target，实际安装 $installed。" ;;
+    esac
+    printf '已确认安装版本：%s\n' "$installed"
 else
     # Refresh dependency indexes only when the install needs them.
     if ! opkg --noaction install "$payload" >/dev/null 2>&1; then
